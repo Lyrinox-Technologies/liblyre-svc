@@ -174,6 +174,7 @@ logger    *log.Logger
 
 // For synchronous auth
 authResp chan *serviceAuthResponsePayload
+	pendingCalls map[string]chan *Response
 
 mu          sync.RWMutex
 connected   bool
@@ -217,6 +218,7 @@ handlers: make(map[string]HandlerFunc),
 logger:   cfg.Logger,
 stopChan: make(chan struct{}),
 authResp: make(chan *serviceAuthResponsePayload, 1),
+	pendingCalls: make(map[string]chan *Response),
 }, nil
 }
 
@@ -360,10 +362,44 @@ func (s *Service) handleMessage(msg *rdgproto.Message, payload interface{}) {
 switch msg.Type {
 case MsgTypeServiceMessage, MsgTypeClientToService:
 s.handleServiceMessage(msg, payload)
-default:
-s.logger.Printf("[%s] Unknown message type: %d", s.config.ServiceID, msg.Type)
+case MsgTypeServiceResponse:
+	s.handleServiceResponse(payload)
+	default:
+	s.logger.Printf("[%s] Unknown message type: %d", s.config.ServiceID, msg.Type)
+	}
+	}
+
+// CallCapability invokes a public Lyre capability without knowing its provider
+// or the provider's private endpoint. Run must be active to receive the result.
+func (s *Service) CallCapability(capability string, payload map[string]interface{}, timeout time.Duration) (*Response, error) {
+	if capability == "" { return nil, errors.New("capability is required") }
+	if timeout <= 0 { timeout = 30 * time.Second }
+	idBytes := make([]byte, 16)
+	if _, err := rand.Read(idBytes); err != nil { return nil, err }
+	id := hex.EncodeToString(idBytes)
+	body, err := json.Marshal(payload)
+	if err != nil { return nil, err }
+	result := make(chan *Response, 1)
+	s.mu.Lock()
+	if !s.running { s.mu.Unlock(); return nil, errors.New("service Run must be active before calling a capability") }
+	s.pendingCalls[id] = result
+	s.mu.Unlock()
+	data, err := (&serviceMessagePayload{MessageID: id, ToService: capability, Payload: body}).Marshal()
+	if err == nil { _, err = s.proto.SendRaw(MsgTypeServiceMessage, data) }
+	if err != nil { s.mu.Lock(); delete(s.pendingCalls, id); s.mu.Unlock(); return nil, err }
+	select { case response := <-result: return response, nil; case <-time.After(timeout): s.mu.Lock(); delete(s.pendingCalls, id); s.mu.Unlock(); return nil, errors.New("capability call timed out") }
 }
-}
+
+func (s *Service) handleServiceResponse(payload interface{}) {
+	bytes, ok := payload.([]byte); if !ok { return }
+	response := &serviceResponsePayload{}
+	if response.Unmarshal(bytes) != nil { return }
+	s.mu.Lock(); pending := s.pendingCalls[response.MessageID]; delete(s.pendingCalls, response.MessageID); s.mu.Unlock()
+	if pending == nil { return }
+	result := &Response{Success: response.Success, Error: response.Error}
+	_ = json.Unmarshal(response.Payload, &result.Payload)
+	pending <- result
+	}
 
 // handleServiceMessage processes a service or client-to-service message.
 func (s *Service) handleServiceMessage(msg *rdgproto.Message, payload interface{}) {

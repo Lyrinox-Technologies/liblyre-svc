@@ -90,6 +90,17 @@ Payload     []byte
 ReplyTo     string
 }
 
+func (p *serviceMessagePayload) Marshal() ([]byte, error) {
+	buf := new(bytes.Buffer)
+	rdgproto.WriteString(buf, p.MessageID)
+	rdgproto.WriteString(buf, p.FromService)
+	rdgproto.WriteString(buf, p.ToService)
+	rdgproto.WriteString(buf, p.Endpoint)
+	rdgproto.WriteBytes(buf, p.Payload)
+	rdgproto.WriteString(buf, p.ReplyTo)
+	return buf.Bytes(), nil
+}
+
 func (p *serviceMessagePayload) Unmarshal(data []byte) error {
 r := bytes.NewReader(data)
 var err error
@@ -127,6 +138,16 @@ MessageID string
 Success   bool
 Payload   []byte
 Error     string
+}
+
+func (p *serviceResponsePayload) Unmarshal(data []byte) error {
+	r := bytes.NewReader(data)
+	var err error
+	if p.MessageID, err = rdgproto.ReadString(r); err != nil { return err }
+	if p.Success, err = rdgproto.ReadBool(r); err != nil { return err }
+	if p.Payload, err = rdgproto.ReadBytes(r); err != nil { return err }
+	p.Error, err = rdgproto.ReadString(r)
+	return err
 }
 
 func (p *serviceResponsePayload) Marshal() ([]byte, error) {
