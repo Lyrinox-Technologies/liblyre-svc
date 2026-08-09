@@ -109,7 +109,8 @@ fmt.Println(svc.ServiceConfigYAML())
 
 Expose a stable capability name while keeping the provider's handler endpoint
 private to the implementation. Other Lyre services call the capability name;
-Lyre selects a connected provider and routes the response back to the caller.
+Lyre routes the response back to the caller. A capability/version has one
+provider; a different public service cannot replace an established contract.
 
 ```go
 svc, _ := liblyresvc.New(liblyresvc.Config{
