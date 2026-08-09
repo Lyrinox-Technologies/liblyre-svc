@@ -67,9 +67,12 @@ func main() {
 }
 ```
 
-## Configuring Lyre-Server
+## Registering a Service
 
-Before your service can connect, an admin must register it in Lyre-Server's `config.yaml`.
+Public services self-register on their first authenticated connection. Use a
+unique ID, a generated 32-byte secret, and only non-sensitive endpoints. The
+Lyre operator must approve any service that needs identity, authentication, or
+other elevated infrastructure access.
 
 ### Option 1: Use lyre-service-configure CLI
 
@@ -101,6 +104,38 @@ fmt.Println(svc.ServiceConfigYAML())
 //       - "echo"
 //       - "greet"
 ```
+
+## Publishing and Calling Capabilities
+
+Expose a stable capability name while keeping the provider's handler endpoint
+private to the implementation. Other Lyre services call the capability name;
+Lyre selects a connected provider and routes the response back to the caller.
+
+```go
+svc, _ := liblyresvc.New(liblyresvc.Config{
+    ServiceID:   "crypto-service",
+    Secret:      mustSecret(),
+    ServerURL:   "wss://lyre.example/lyre/service/ws",
+    Endpoints:   []string{"internal.encrypt"},
+    Capabilities: []liblyresvc.Capability{{
+        Name: "crypto.encrypt", Version: 1, Endpoint: "internal.encrypt",
+    }},
+})
+
+svc.Handle("internal.encrypt", func(req *liblyresvc.Request) *liblyresvc.Response {
+    return req.Success(map[string]interface{}{"ciphertext": "..."})
+})
+
+// Connect both services and start Run in a goroutine before making calls.
+response, err := svc.CallCapability("crypto.encrypt", map[string]interface{}{
+    "plaintext": "hello",
+}, 10*time.Second)
+```
+
+Capability names are provider-neutral, lowercase dotted identifiers. Version
+`1` is currently the supported routing version. Do not use capability endpoints
+for identity, authentication, session, credential, MFA, administration, or
+Lyre control-plane operations.
 
 ## Handling Requests
 
