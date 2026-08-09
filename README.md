@@ -50,10 +50,6 @@ func main() {
         })
     })
 
-    // Print the configure command for the admin
-    fmt.Println("Run this to configure Lyre-Server:")
-    fmt.Println(svc.ConfigureCommand())
-
     // Connect and run
     if err := svc.Connect(); err != nil {
         log.Fatal(err)
@@ -74,9 +70,11 @@ unique ID, a generated 32-byte secret, and only non-sensitive endpoints. The
 Lyre operator must approve any service that needs identity, authentication, or
 other elevated infrastructure access.
 
-### Option 1: Use lyre-service-configure CLI
+### Elevated services
 
-The library provides a helper method to generate the configuration command:
+Services that require sensitive Lyre access are operator-configured. The helper
+methods can generate a configuration command or YAML snippet for that case;
+they are not required for ordinary public service registration.
 
 ```go
 svc, _ := liblyresvc.New(config)
@@ -195,17 +193,18 @@ hash, err := liblyresvc.HashSecret(secret)
 
 ### Production Recommendations
 
-1. **Use bcrypt-hashed secrets in config.yaml** - The `ConfigureCommandHashed()` method does this automatically
-2. **Use TLS** - Connect via `wss://` in production
-3. **Rotate secrets periodically** - Update both the service and config.yaml
+1. **Generate a unique service secret** - keep it outside source control.
+2. **Use TLS** - connect via `wss://` in production.
+3. **Rotate secrets deliberately** - public service registration persists the bcrypt hash on first registration.
+4. **Treat `Request.Principal` as the only caller identity source** - do not rely on caller-provided identity fields.
 
 ## Configuration Options
 
 ```go
 liblyresvc.Config{
     // Required
-    ServiceID:   "my-service",    // Must match config.yaml
-    Secret:      "shared-secret", // Must match config.yaml
+    ServiceID:   "my-service",    // Unique public service ID
+    Secret:      "shared-secret", // Generated service secret
     ServerURL:   "ws://host:port/ws",
 
     // Optional
