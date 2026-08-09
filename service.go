@@ -70,6 +70,9 @@ ServerURL string
 // Endpoints lists the endpoints/actions this service provides
 Endpoints []string
 
+// Capabilities are public contracts mapped to this service's private handlers.
+Capabilities []Capability
+
 // HeartbeatInterval is how often to send heartbeats (default: 30s)
 HeartbeatInterval time.Duration
 
@@ -116,6 +119,15 @@ type Principal struct {
 	Username  string
 	Email     string
 	AgentName string
+}
+
+type Capability struct {
+	Name string
+	Version uint32
+	Endpoint string
+	InputSchema string
+	OutputSchema string
+	Priority int
 }
 
 // Response represents a response to send back.
@@ -264,6 +276,7 @@ Endpoints: s.config.Endpoints,
 Name:      s.config.ServiceName,
 Type:      s.config.ServiceType,
 Description: s.config.Description,
+	Capabilities: capabilitiesForWire(s.config.Capabilities),
 }
 
 data, err := authPayload.Marshal()

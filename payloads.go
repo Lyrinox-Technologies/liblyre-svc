@@ -2,6 +2,7 @@ package liblyresvc
 
 import (
 "bytes"
+"encoding/json"
 
 "github.com/LyrinoxTechnologies/ridged-proto/rdgproto"
 )
@@ -14,7 +15,12 @@ Endpoints []string
 Name        string
 Type        string
 Description string
+Capabilities []capabilityPayload
 }
+
+type capabilityPayload struct { Capability string `json:"capability"`; Version uint32 `json:"version"`; Endpoint string `json:"endpoint"`; InputSchema string `json:"input_schema,omitempty"`; OutputSchema string `json:"output_schema,omitempty"`; Priority int `json:"priority,omitempty"` }
+
+func capabilitiesForWire(capabilities []Capability) []capabilityPayload { out := make([]capabilityPayload, 0, len(capabilities)); for _, c := range capabilities { out = append(out, capabilityPayload{c.Name, c.Version, c.Endpoint, c.InputSchema, c.OutputSchema, c.Priority}) }; return out }
 
 func (p *serviceAuthPayload) Marshal() ([]byte, error) {
 buf := new(bytes.Buffer)
@@ -32,7 +38,9 @@ endpointsStr += "]"
 rdgproto.WriteString(buf, endpointsStr)
 	rdgproto.WriteString(buf, p.Name)
 	rdgproto.WriteString(buf, p.Type)
-	rdgproto.WriteString(buf, p.Description)
+rdgproto.WriteString(buf, p.Description)
+	capabilities, _ := json.Marshal(p.Capabilities)
+	rdgproto.WriteString(buf, string(capabilities))
 return buf.Bytes(), nil
 }
 
