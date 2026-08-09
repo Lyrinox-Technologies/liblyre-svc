@@ -11,6 +11,9 @@ type serviceAuthPayload struct {
 ServiceID string
 Secret    string
 Endpoints []string
+Name        string
+Type        string
+Description string
 }
 
 func (p *serviceAuthPayload) Marshal() ([]byte, error) {
@@ -27,6 +30,9 @@ endpointsStr += `"` + ep + `"`
 }
 endpointsStr += "]"
 rdgproto.WriteString(buf, endpointsStr)
+	rdgproto.WriteString(buf, p.Name)
+	rdgproto.WriteString(buf, p.Type)
+	rdgproto.WriteString(buf, p.Description)
 return buf.Bytes(), nil
 }
 

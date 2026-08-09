@@ -261,6 +261,9 @@ authPayload := &serviceAuthPayload{
 ServiceID: s.config.ServiceID,
 Secret:    s.config.Secret,
 Endpoints: s.config.Endpoints,
+Name:      s.config.ServiceName,
+Type:      s.config.ServiceType,
+Description: s.config.Description,
 }
 
 data, err := authPayload.Marshal()
