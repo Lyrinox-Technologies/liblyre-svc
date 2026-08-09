@@ -117,6 +117,29 @@ func TestService_Handle(t *testing.T) {
 	}
 }
 
+func TestPrincipalFromPayloadRecognizesAgent(t *testing.T) {
+	principal := principalFromPayload(map[string]interface{}{
+		"_principal_type": "agent",
+		"_agent_id":       "agent-123",
+		"_agent_name":     "release-bot",
+	})
+	if principal.Type != "agent" || principal.ID != "agent-123" || principal.AgentName != "release-bot" {
+		t.Fatalf("unexpected agent principal: %#v", principal)
+	}
+}
+
+func TestPrincipalFromPayloadRecognizesUser(t *testing.T) {
+	principal := principalFromPayload(map[string]interface{}{
+		"_principal_type": "user",
+		"_user_id":        "user-123",
+		"_username":       "lyrinox",
+		"_email":          "test@example.com",
+	})
+	if principal.Type != "user" || principal.ID != "user-123" || principal.Username != "lyrinox" {
+		t.Fatalf("unexpected user principal: %#v", principal)
+	}
+}
+
 func TestService_HandleWildcard(t *testing.T) {
 	svc, _ := New(Config{
 		ServiceID: "test",

@@ -91,6 +91,10 @@ FromService string
 // FromUser is the source user ID (if from client)
 FromUser string
 
+// Principal is the authoritative Lyre identity attached to this request.
+// Services must use it rather than any identity fields supplied by callers.
+Principal Principal
+
 // Endpoint is the endpoint/action being called
 Endpoint string
 
@@ -102,6 +106,16 @@ RawPayload []byte
 
 // svc is a reference to the service for sending responses
 svc *Service
+}
+
+// Principal identifies the authenticated caller without exposing passwords,
+// MFA data, session tokens, or other authentication secrets.
+type Principal struct {
+	Type      string
+	ID        string
+	Username  string
+	Email     string
+	AgentName string
 }
 
 // Response represents a response to send back.
@@ -361,6 +375,7 @@ req := &Request{
 MessageID:   svcMsg.MessageID,
 FromService: svcMsg.FromService,
 FromUser:    svcMsg.FromUser,
+Principal:  principalFromPayload(reqPayload),
 Endpoint:    svcMsg.Endpoint,
 Payload:     reqPayload,
 RawPayload:  svcMsg.Payload,
@@ -389,6 +404,22 @@ resp = handler(req)
 
 // Send response
 s.sendResponse(req.MessageID, resp)
+}
+
+func principalFromPayload(payload map[string]interface{}) Principal {
+	principalType, _ := payload["_principal_type"].(string)
+	if principalType == "agent" {
+		agentID, _ := payload["_agent_id"].(string)
+		agentName, _ := payload["_agent_name"].(string)
+		return Principal{Type: "agent", ID: agentID, AgentName: agentName}
+	}
+	if principalType == "user" {
+		userID, _ := payload["_user_id"].(string)
+		username, _ := payload["_username"].(string)
+		email, _ := payload["_email"].(string)
+		return Principal{Type: "user", ID: userID, Username: username, Email: email}
+	}
+	return Principal{}
 }
 
 // sendResponse sends a response back to the caller.

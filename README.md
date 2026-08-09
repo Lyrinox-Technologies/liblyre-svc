@@ -104,6 +104,13 @@ fmt.Println(svc.ServiceConfigYAML())
 
 ## Handling Requests
 
+### Caller Principals
+
+Handlers receive `req.Principal`, an authoritative Lyre identity. Check
+`req.Principal.Type` before privileged work: `user` includes the user identity;
+`agent` includes only the independent agent ID and name. Services should treat
+agent requests as non-human and keep sensitive operations human-only.
+
 ```go
 svc.Handle("endpoint-name", func(req *liblyresvc.Request) *liblyresvc.Response {
     // Access request data
