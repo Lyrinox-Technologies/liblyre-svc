@@ -26,11 +26,27 @@ func TestConfig_Defaults(t *testing.T) {
 	if svc.config.HeartbeatInterval != 30*time.Second {
 		t.Errorf("HeartbeatInterval = %v, want %v", svc.config.HeartbeatInterval, 30*time.Second)
 	}
-	if svc.config.ReconnectDelay != 5*time.Second {
-		t.Errorf("ReconnectDelay = %v, want %v", svc.config.ReconnectDelay, 5*time.Second)
+	if svc.config.ReconnectDelay != 5*time.Minute {
+		t.Errorf("ReconnectDelay = %v, want %v", svc.config.ReconnectDelay, 5*time.Minute)
+	}
+	if got := svc.reconnectDelay(99); got != 24*time.Hour {
+		t.Errorf("final reconnect delay = %v, want %v", got, 24*time.Hour)
 	}
 	if svc.logger == nil {
 		t.Error("Logger should not be nil")
+	}
+}
+
+func TestDefaultReconnectSchedule(t *testing.T) {
+	want := []time.Duration{5 * time.Minute, 10 * time.Minute, 20 * time.Minute, 40 * time.Minute, 80 * time.Minute, 160 * time.Minute, 24 * time.Hour}
+	got := DefaultReconnectSchedule()
+	if len(got) != len(want) {
+		t.Fatalf("schedule length = %d, want %d", len(got), len(want))
+	}
+	for index := range want {
+		if got[index] != want[index] {
+			t.Errorf("schedule[%d] = %v, want %v", index, got[index], want[index])
+		}
 	}
 }
 

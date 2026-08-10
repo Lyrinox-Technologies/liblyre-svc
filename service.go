@@ -23,6 +23,7 @@
 package liblyresvc
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -77,8 +78,13 @@ type Config struct {
 	// HeartbeatInterval is how often to send heartbeats (default: 30s)
 	HeartbeatInterval time.Duration
 
-	// ReconnectDelay is the delay between reconnection attempts (default: 5s)
+	// ReconnectDelay is retained for compatibility. New services should use
+	// ReconnectSchedule or the production default schedule.
 	ReconnectDelay time.Duration
+
+	// ReconnectSchedule controls persistent reconnection waits. Once exhausted,
+	// the final delay is repeated until Lyre is available again.
+	ReconnectSchedule []time.Duration
 
 	// Logger is an optional logger (default: log.Default())
 	Logger *log.Logger
@@ -209,12 +215,13 @@ type Service struct {
 	authResp     chan *serviceAuthResponsePayload
 	pendingCalls map[string]chan *Response
 
-	mu        sync.RWMutex
-	writeMu   sync.Mutex
-	connected bool
-	running   bool
-	stopChan  chan struct{}
-	wg        sync.WaitGroup
+	mu            sync.RWMutex
+	writeMu       sync.Mutex
+	connected     bool
+	running       bool
+	stopChan      chan struct{}
+	heartbeatStop chan struct{}
+	wg            sync.WaitGroup
 }
 
 // New creates a new service instance.
@@ -240,7 +247,10 @@ func New(cfg Config) (*Service, error) {
 		cfg.HeartbeatInterval = 30 * time.Second
 	}
 	if cfg.ReconnectDelay == 0 {
-		cfg.ReconnectDelay = 5 * time.Second
+		cfg.ReconnectDelay = 5 * time.Minute
+	}
+	if len(cfg.ReconnectSchedule) == 0 {
+		cfg.ReconnectSchedule = DefaultReconnectSchedule()
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = log.Default()
@@ -254,6 +264,54 @@ func New(cfg Config) (*Service, error) {
 		authResp:     make(chan *serviceAuthResponsePayload, 1),
 		pendingCalls: make(map[string]chan *Response),
 	}, nil
+}
+
+// DefaultReconnectSchedule spaces retries to avoid noisy failure loops while
+// ensuring a service eventually re-establishes its Lyre connection.
+func DefaultReconnectSchedule() []time.Duration {
+	return []time.Duration{5 * time.Minute, 10 * time.Minute, 20 * time.Minute, 40 * time.Minute, 80 * time.Minute, 160 * time.Minute, 24 * time.Hour}
+}
+
+// RunPersistent keeps a service available through Lyre outages and restarts.
+// It retries the final schedule interval indefinitely and returns only when
+// the supplied context is cancelled.
+func (s *Service) RunPersistent(ctx context.Context) error {
+	attempt := 0
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := s.Connect(); err == nil {
+			attempt = 0
+			if err = s.Run(); err == nil {
+				return nil
+			}
+			s.logger.Printf("[%s] Lyre connection lost: %v", s.config.ServiceID, err)
+		} else {
+			s.logger.Printf("[%s] Lyre connection unavailable: %v", s.config.ServiceID, err)
+		}
+		delay := s.reconnectDelay(attempt)
+		attempt++
+		s.logger.Printf("[%s] Retrying Lyre connection in %s", s.config.ServiceID, delay)
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func (s *Service) reconnectDelay(attempt int) time.Duration {
+	schedule := s.config.ReconnectSchedule
+	if len(schedule) == 0 {
+		return s.config.ReconnectDelay
+	}
+	if attempt >= len(schedule) {
+		return schedule[len(schedule)-1]
+	}
+	return schedule[attempt]
 }
 
 // Handle registers a handler for an endpoint.
@@ -293,6 +351,8 @@ func (s *Service) Connect() error {
 	// Authenticate synchronously
 	if err := s.authenticate(); err != nil {
 		conn.Close()
+		s.conn = nil
+		s.proto = nil
 		return fmt.Errorf("authentication failed: %w", err)
 	}
 
@@ -363,9 +423,10 @@ func (s *Service) Run() error {
 	s.running = true
 	s.mu.Unlock()
 
-	// Start heartbeat goroutine
+	// Start a heartbeat bound to this individual connection.
+	s.heartbeatStop = make(chan struct{})
 	s.wg.Add(1)
-	go s.heartbeatLoop()
+	go s.heartbeatLoop(s.heartbeatStop)
 
 	// Message loop
 	for {
@@ -384,6 +445,7 @@ func (s *Service) Run() error {
 				return nil
 			}
 			s.logger.Printf("[%s] Error receiving message: %v", s.config.ServiceID, err)
+			s.disconnect()
 			return err
 		}
 
@@ -611,7 +673,7 @@ func (s *Service) sendResponse(messageID string, resp *Response) {
 }
 
 // heartbeatLoop sends periodic heartbeats.
-func (s *Service) heartbeatLoop() {
+func (s *Service) heartbeatLoop(stop <-chan struct{}) {
 	defer s.wg.Done()
 
 	ticker := time.NewTicker(s.config.HeartbeatInterval)
@@ -619,12 +681,30 @@ func (s *Service) heartbeatLoop() {
 
 	for {
 		select {
-		case <-s.stopChan:
+		case <-stop:
 			return
 		case <-ticker.C:
 			s.sendHeartbeat()
 		}
 	}
+}
+
+func (s *Service) disconnect() {
+	s.mu.Lock()
+	if s.heartbeatStop != nil {
+		close(s.heartbeatStop)
+		s.heartbeatStop = nil
+	}
+	s.connected = false
+	s.running = false
+	conn := s.conn
+	s.conn = nil
+	s.proto = nil
+	s.mu.Unlock()
+	if conn != nil {
+		_ = conn.Close()
+	}
+	s.wg.Wait()
 }
 
 // sendHeartbeat sends a heartbeat message.
@@ -647,26 +727,23 @@ func (s *Service) sendHeartbeat() {
 func (s *Service) sendRaw(messageType byte, data []byte) (uint32, error) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
+	if s.proto == nil {
+		return 0, errors.New("Lyre connection is not available")
+	}
 	return s.proto.SendRaw(messageType, data)
 }
 
 // Close shuts down the service connection.
 func (s *Service) Close() error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if !s.connected {
+		s.mu.Unlock()
 		return nil
 	}
 
 	s.running = false
-	close(s.stopChan)
-	s.wg.Wait()
-
-	s.connected = false
-	if s.conn != nil {
-		return s.conn.Close()
-	}
+	s.mu.Unlock()
+	s.disconnect()
 	return nil
 }
 
