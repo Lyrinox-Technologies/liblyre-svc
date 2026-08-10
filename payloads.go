@@ -19,18 +19,25 @@ type serviceAuthPayload struct {
 }
 
 type capabilityPayload struct {
-	Capability   string `json:"capability"`
-	Version      uint32 `json:"version"`
-	Endpoint     string `json:"endpoint"`
-	InputSchema  string `json:"input_schema,omitempty"`
-	OutputSchema string `json:"output_schema,omitempty"`
-	Priority     int    `json:"priority,omitempty"`
+	Capability              string                 `json:"capability"`
+	Version                 uint32                 `json:"version,omitempty"`
+	SupportedVersions       []uint32               `json:"supported_contract_versions,omitempty"`
+	ProviderID              string                 `json:"provider_id,omitempty"`
+	ProviderCapabilityID    string                 `json:"provider_capability_id,omitempty"`
+	Endpoint                string                 `json:"endpoint"`
+	InputSchema             string                 `json:"input_schema,omitempty"`
+	OutputSchema            string                 `json:"output_schema,omitempty"`
+	Priority                int                    `json:"priority,omitempty"`
+	ProviderSoftwareVersion string                 `json:"provider_software_version,omitempty"`
+	Description             string                 `json:"description,omitempty"`
+	Metadata                map[string]interface{} `json:"metadata,omitempty"`
+	Extensions              []Extension            `json:"extensions,omitempty"`
 }
 
 func capabilitiesForWire(capabilities []Capability) []capabilityPayload {
 	out := make([]capabilityPayload, 0, len(capabilities))
 	for _, c := range capabilities {
-		out = append(out, capabilityPayload{c.Name, c.Version, c.Endpoint, c.InputSchema, c.OutputSchema, c.Priority})
+		out = append(out, capabilityPayload{Capability: c.Name, Version: c.Version, SupportedVersions: c.SupportedVersions, ProviderID: c.ProviderID, ProviderCapabilityID: c.ProviderCapabilityID, Endpoint: c.Endpoint, InputSchema: c.InputSchema, OutputSchema: c.OutputSchema, Priority: c.Priority, ProviderSoftwareVersion: c.ProviderSoftwareVersion, Description: c.Description, Metadata: c.Metadata, Extensions: c.Extensions})
 	}
 	return out
 }

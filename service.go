@@ -123,12 +123,44 @@ type Principal struct {
 }
 
 type Capability struct {
-	Name         string
-	Version      uint32
-	Endpoint     string
-	InputSchema  string
-	OutputSchema string
-	Priority     int
+	Name                    string
+	Version                 uint32 // Legacy single-version shorthand.
+	SupportedVersions       []uint32
+	ProviderID              string
+	ProviderCapabilityID    string
+	Endpoint                string
+	InputSchema             string
+	OutputSchema            string
+	Priority                int
+	ProviderSoftwareVersion string
+	Description             string
+	Metadata                map[string]interface{}
+	Extensions              []Extension
+}
+
+// Extension is bounded, declarative routing metadata understood by Lyre. It
+// cannot contain executable code or arbitrary transformations.
+type Extension struct {
+	ID               string                 `json:"id"`
+	Name             string                 `json:"name"`
+	Description      string                 `json:"description"`
+	CallerSchema     map[string]interface{} `json:"caller_schema,omitempty"`
+	ProviderEndpoint string                 `json:"provider_endpoint,omitempty"`
+	RequestFields    map[string]string      `json:"request_fields,omitempty"`
+	RequestDefaults  map[string]interface{} `json:"request_defaults,omitempty"`
+	ResponseFields   map[string]string      `json:"response_fields,omitempty"`
+	Errors           []ExtensionError       `json:"errors,omitempty"`
+	Execution        Execution              `json:"execution,omitempty"`
+}
+type ExtensionError struct {
+	ProviderCode string `json:"provider_code"`
+	CallerCode   string `json:"caller_code"`
+	Retryable    bool   `json:"retryable"`
+	Description  string `json:"description"`
+}
+type Execution struct {
+	Idempotent bool `json:"idempotent"`
+	Retryable  bool `json:"retryable"`
 }
 
 // Response represents a response to send back.
@@ -397,6 +429,9 @@ func (s *Service) CallCapability(capability string, payload map[string]interface
 	}
 	s.pendingCalls[id] = result
 	s.mu.Unlock()
+	if len(capability) < 5 || capability[:5] != "lyre." {
+		capability = "lyre." + capability
+	}
 	data, err := (&serviceMessagePayload{MessageID: id, ToService: capability, Payload: body}).Marshal()
 	if err == nil {
 		_, err = s.sendRaw(MsgTypeServiceMessage, data)
@@ -416,6 +451,48 @@ func (s *Service) CallCapability(capability string, payload map[string]interface
 		s.mu.Unlock()
 		return nil, errors.New("capability call timed out")
 	}
+}
+
+// CallCapabilityVersion pins a public contract version while Lyre selects an
+// eligible provider implementation.
+func (s *Service) CallCapabilityVersion(name string, version uint32, payload map[string]interface{}, timeout time.Duration) (*Response, error) {
+	if version == 0 {
+		return nil, errors.New("contract version is required")
+	}
+	return s.CallCapability("lyre."+name+"@v"+fmt.Sprint(version), payload, timeout)
+}
+
+// CallProviderCapability pins one provider implementation while Lyre still
+// owns dispatch, identity propagation, correlation, and response routing.
+func (s *Service) CallProviderCapability(name, providerID, providerCapabilityID string, payload map[string]interface{}, timeout time.Duration) (*Response, error) {
+	if providerID == "" || providerCapabilityID == "" {
+		return nil, errors.New("provider and provider capability IDs are required")
+	}
+	return s.CallCapability("lyre."+name+"@"+providerID+"."+providerCapabilityID, payload, timeout)
+}
+
+func (s *Service) CallProviderCapabilityVersion(name, providerID, providerCapabilityID string, version uint32, payload map[string]interface{}, timeout time.Duration) (*Response, error) {
+	if version == 0 {
+		return nil, errors.New("contract version is required")
+	}
+	if providerID == "" || providerCapabilityID == "" {
+		return nil, errors.New("provider and provider capability IDs are required")
+	}
+	return s.CallCapability(fmt.Sprintf("lyre.%s@%s.%s@v%d", name, providerID, providerCapabilityID, version), payload, timeout)
+}
+
+// CallProviderExtension performs an additive provider extension. Extensions
+// require an explicit provider pin because extension semantics are provider scoped.
+func (s *Service) CallProviderExtension(name, providerID, providerCapabilityID, extensionID string, payload, options map[string]interface{}, timeout time.Duration) (*Response, error) {
+	if extensionID == "" {
+		return nil, errors.New("extension ID is required")
+	}
+	request := make(map[string]interface{}, len(payload)+1)
+	for key, value := range payload {
+		request[key] = value
+	}
+	request["extension"] = map[string]interface{}{"id": extensionID, "options": options}
+	return s.CallProviderCapability(name, providerID, providerCapabilityID, request, timeout)
 }
 
 func (s *Service) handleServiceResponse(payload interface{}) {
