@@ -31,6 +31,7 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"os"
 	"sync"
 	"time"
 
@@ -72,6 +73,9 @@ type Config struct {
 	// PublisherPrivateKey is an RSA private key used only as an ephemeral proof
 	// that PublisherUserID owns an uploaded publisher public key.
 	PublisherPrivateKey string
+
+	// PublisherPrivateKeyFile is a protected file containing the RSA private key.
+	PublisherPrivateKeyFile string
 
 	// ServerURL is the WebSocket URL of the Lyre-Server (e.g., "ws://localhost:36623/ws")
 	ServerURL string
@@ -371,6 +375,14 @@ func (s *Service) Connect() error {
 
 // authenticate sends the service auth request and waits for response.
 func (s *Service) authenticate() error {
+	publisherPrivateKey := s.config.PublisherPrivateKey
+	if publisherPrivateKey == "" && s.config.PublisherPrivateKeyFile != "" {
+		data, err := os.ReadFile(s.config.PublisherPrivateKeyFile)
+		if err != nil {
+			return fmt.Errorf("read publisher private key: %w", err)
+		}
+		publisherPrivateKey = string(data)
+	}
 	// Build auth payload
 	authPayload := &serviceAuthPayload{
 		ServiceID:           s.config.ServiceID,
@@ -381,7 +393,7 @@ func (s *Service) authenticate() error {
 		Description:         s.config.Description,
 		Capabilities:        capabilitiesForWire(s.config.Capabilities),
 		PublisherUserID:     s.config.PublisherUserID,
-		PublisherPrivateKey: s.config.PublisherPrivateKey,
+		PublisherPrivateKey: publisherPrivateKey,
 	}
 
 	data, err := authPayload.Marshal()
