@@ -383,6 +383,7 @@ func (s *Service) authenticate() error {
 		}
 		publisherPrivateKey = string(data)
 	}
+	s.logger.Printf("[%s] Publisher credentials loaded: user_id_len=%d private_key_len=%d", s.config.ServiceID, len(s.config.PublisherUserID), len(publisherPrivateKey))
 	// Build auth payload
 	authPayload := &serviceAuthPayload{
 		ServiceID:           s.config.ServiceID,
