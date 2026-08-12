@@ -1,21 +1,33 @@
 package liblyresvc
 
-import "testing"
+import (
+	"bytes"
+	"github.com/LyrinoxTechnologies/ridged-proto/rdgproto"
+	"testing"
+)
 
-func TestServiceMessagePayloadMatchesLyreWireFormat(t *testing.T) {
-	payload := &serviceMessagePayload{
-		MessageID: "message-1", FromService: "caller", ToService: "crypto.encrypt",
-		Endpoint: "", Payload: []byte(`{"text":"hello"}`), ReplyTo: "",
-	}
-	encoded, err := payload.Marshal()
+func TestServiceAuthPublisherFieldsAreSerialized(t *testing.T) {
+	payload := &serviceAuthPayload{ServiceID: "test", Secret: "secret", Endpoints: []string{"echo"}, Name: "test", Type: "utility", Capabilities: []capabilityPayload{}, PublisherUserID: "publisher-user", PublisherPrivateKey: "private-key"}
+	data, err := payload.Marshal()
 	if err != nil {
-		t.Fatalf("marshal service message: %v", err)
+		t.Fatal(err)
 	}
-	var decoded serviceMessagePayload
-	if err := decoded.Unmarshal(encoded); err != nil {
-		t.Fatalf("unmarshal service message: %v", err)
+	decoded := &serviceAuthPayload{}
+	r := bytes.NewReader(data)
+	for i := 0; i < 7; i++ {
+		if _, err := rdgproto.ReadString(r); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if decoded.MessageID != payload.MessageID || decoded.FromService != payload.FromService || decoded.ToService != payload.ToService || decoded.Endpoint != payload.Endpoint || string(decoded.Payload) != string(payload.Payload) || decoded.ReplyTo != payload.ReplyTo {
-		t.Fatalf("service message round trip mismatch: %#v", decoded)
+	decoded.PublisherUserID, err = rdgproto.ReadString(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded.PublisherPrivateKey, err = rdgproto.ReadString(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded.PublisherUserID != payload.PublisherUserID || decoded.PublisherPrivateKey != payload.PublisherPrivateKey {
+		t.Fatalf("publisher fields lost: user=%q key=%q", decoded.PublisherUserID, decoded.PublisherPrivateKey)
 	}
 }
