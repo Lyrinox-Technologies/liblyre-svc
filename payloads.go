@@ -9,13 +9,15 @@ import (
 
 // serviceAuthPayload mirrors protocol.ServiceAuthPayload
 type serviceAuthPayload struct {
-	ServiceID    string
-	Secret       string
-	Endpoints    []string
-	Name         string
-	Type         string
-	Description  string
-	Capabilities []capabilityPayload
+	ServiceID           string
+	Secret              string
+	Endpoints           []string
+	Name                string
+	Type                string
+	Description         string
+	Capabilities        []capabilityPayload
+	PublisherUserID     string
+	PublisherPrivateKey string
 }
 
 type capabilityPayload struct {
@@ -61,6 +63,8 @@ func (p *serviceAuthPayload) Marshal() ([]byte, error) {
 	rdgproto.WriteString(buf, p.Description)
 	capabilities, _ := json.Marshal(p.Capabilities)
 	rdgproto.WriteString(buf, string(capabilities))
+	rdgproto.WriteString(buf, p.PublisherUserID)
+	rdgproto.WriteString(buf, p.PublisherPrivateKey)
 	return buf.Bytes(), nil
 }
 

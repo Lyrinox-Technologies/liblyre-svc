@@ -27,7 +27,9 @@ func main() {
         ServiceName: "My Service",
         ServiceType: "backend",
         Description: "Example service",
-        Secret:      "my-shared-secret",
+    Secret:      "my-shared-secret",
+    PublisherUserID: "lyre-user-id",
+    PublisherPrivateKey: os.Getenv("LYRE_PUBLISHER_PRIVATE_KEY"),
         ServerURL:   "ws://localhost:36623/ws",
         Endpoints:   []string{"echo", "greet"},
     })
@@ -65,10 +67,11 @@ func main() {
 
 ## Registering a Service
 
-Public services self-register on their first authenticated connection. Use a
-unique ID, a generated 32-byte secret, and only non-sensitive endpoints. The
-Lyre operator must approve any service that needs identity, authentication, or
-other elevated infrastructure access.
+Services self-register on their first authenticated connection through this SDK.
+Use a unique ID and a generated 32-byte secret. Registration and capability
+publishing also require `PublisherUserID` plus an RSA private key matching a
+public key uploaded by that user in Lyre Web. During pre-launch, Lyre accepts
+publisher proofs only from members of the Lyrinox Technologies organization.
 
 ### Elevated services
 
@@ -114,6 +117,8 @@ provider; a different public service cannot replace an established contract.
 svc, _ := liblyresvc.New(liblyresvc.Config{
     ServiceID:   "crypto-service",
     Secret:      mustSecret(),
+    PublisherUserID: mustEnv("LYRE_PUBLISHER_USER_ID"),
+    PublisherPrivateKey: mustEnv("LYRE_PUBLISHER_PRIVATE_KEY"),
     ServerURL:   "wss://lyre.example/lyre/service/ws",
     Endpoints:   []string{"internal.encrypt"},
     Capabilities: []liblyresvc.Capability{{

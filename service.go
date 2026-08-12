@@ -66,6 +66,13 @@ type Config struct {
 	// Secret is the shared secret for authenticating with Lyre-Server
 	Secret string
 
+	// PublisherUserID is the Lyre user that owns this publish attempt.
+	PublisherUserID string
+
+	// PublisherPrivateKey is an RSA private key used only as an ephemeral proof
+	// that PublisherUserID owns an uploaded publisher public key.
+	PublisherPrivateKey string
+
 	// ServerURL is the WebSocket URL of the Lyre-Server (e.g., "ws://localhost:36623/ws")
 	ServerURL string
 
@@ -366,13 +373,15 @@ func (s *Service) Connect() error {
 func (s *Service) authenticate() error {
 	// Build auth payload
 	authPayload := &serviceAuthPayload{
-		ServiceID:    s.config.ServiceID,
-		Secret:       s.config.Secret,
-		Endpoints:    s.config.Endpoints,
-		Name:         s.config.ServiceName,
-		Type:         s.config.ServiceType,
-		Description:  s.config.Description,
-		Capabilities: capabilitiesForWire(s.config.Capabilities),
+		ServiceID:           s.config.ServiceID,
+		Secret:              s.config.Secret,
+		Endpoints:           s.config.Endpoints,
+		Name:                s.config.ServiceName,
+		Type:                s.config.ServiceType,
+		Description:         s.config.Description,
+		Capabilities:        capabilitiesForWire(s.config.Capabilities),
+		PublisherUserID:     s.config.PublisherUserID,
+		PublisherPrivateKey: s.config.PublisherPrivateKey,
 	}
 
 	data, err := authPayload.Marshal()
