@@ -140,19 +140,19 @@ type Principal struct {
 }
 
 type Capability struct {
-	Name                    string
-	Version                 uint32 // Legacy single-version shorthand.
-	SupportedVersions       []uint32
-	ProviderID              string
-	ProviderCapabilityID    string
-	Endpoint                string
-	InputSchema             string
-	OutputSchema            string
-	Priority                int
-	ProviderSoftwareVersion string
-	Description             string
-	Metadata                map[string]interface{}
-	Extensions              []Extension
+	Name                    string                 `json:"capability,omitempty"`
+	Version                 uint32                 `json:"version,omitempty"` // Legacy single-version shorthand.
+	SupportedVersions       []uint32               `json:"supported_contract_versions,omitempty"`
+	ProviderID              string                 `json:"provider_id,omitempty"`
+	ProviderCapabilityID    string                 `json:"provider_capability_id,omitempty"`
+	Endpoint                string                 `json:"endpoint"`
+	InputSchema             string                 `json:"input_schema,omitempty"`
+	OutputSchema            string                 `json:"output_schema,omitempty"`
+	Priority                int                    `json:"priority,omitempty"`
+	ProviderSoftwareVersion string                 `json:"provider_software_version,omitempty"`
+	Description             string                 `json:"description,omitempty"`
+	Metadata                map[string]interface{} `json:"metadata,omitempty"`
+	Extensions              []Extension            `json:"extensions,omitempty"`
 }
 
 // Extension is bounded, declarative routing metadata understood by Lyre. It
